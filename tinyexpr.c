@@ -57,6 +57,7 @@ typedef double (*te_fun2)(double, double);
 enum {
     TOK_NULL = TE_CLOSURE7+1, TOK_ERROR, TOK_END, TOK_SEP,
     TOK_OPEN, TOK_CLOSE, TOK_NUMBER, TOK_VARIABLE, TOK_INFIX
+		,TOK_OPEN_BRACKET, TOK_CLOSE_BRACKET
 };
 
 
@@ -80,7 +81,12 @@ typedef struct state {
 #define IS_PURE(TYPE) (((TYPE) & TE_FLAG_PURE) != 0)
 #define IS_FUNCTION(TYPE) (((TYPE) & TE_FUNCTION0) != 0)
 #define IS_CLOSURE(TYPE) (((TYPE) & TE_CLOSURE0) != 0)
+#if 0
 #define ARITY(TYPE) ( ((TYPE) & (TE_FUNCTION0 | TE_CLOSURE0)) ? ((TYPE) & 0x00000007) : 0 )
+#endif
+#define ARITY(TYPE)                                                       \
+   ( ((TYPE) & (TE_FUNCTION0 | TE_CLOSURE0)) ? ((TYPE) & 0x00000007)       \
+     : ((TYPE) == TE_ARRAY ? 1 : 0) )
 #define NEW_EXPR(type, ...) new_expr((type), (const te_expr*[]){__VA_ARGS__})
 #define CHECK_NULL(ptr, ...) if ((ptr) == NULL) { __VA_ARGS__; return NULL; }
 
@@ -154,6 +160,60 @@ static double ncr(double n, double r) {
 }
 static double npr(double n, double r) {return ncr(n, r) * fac(r);}
 
+/*–––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––*/
+/* Generic array-aggregate functions:                                   */
+/*   arr[0] = length; arr[1..length] = data                                */
+/*–––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––*/
+static double te_sum(const double *arr) {
+    int len = (int)arr[0];
+    double s = 0.0;
+    for (int i = 1; i <= len; ++i) s += arr[i];
+    return s;
+}
+
+static double te_arrmin(const double *arr) {
+    int len = (int)arr[0];
+    if (len < 1) return NAN;
+    double m = arr[1];
+    for (int i = 2; i <= len; ++i)
+        if (arr[i] < m) m = arr[i];
+    return m;
+}
+
+static double te_arrmax(const double *arr) {
+    int len = (int)arr[0];
+    if (len < 1) return NAN;
+    double m = arr[1];
+    for (int i = 2; i <= len; ++i)
+        if (arr[i] > m) m = arr[i];
+    return m;
+}
+
+static double te_lerp(const double *domain, const double *range, double x) {
+    int n = (int)domain[0];
+    if ((int)range[0] != n || n < 2) {
+        //fprintf(stderr, "linear_interpolate(): mismatched or invalid array lengths\n");
+        return NAN;
+    }
+    const double *d = domain + 1;
+    const double *r = range + 1;
+    int ascending = d[n - 1] > d[0];
+    for (int i = 0; i < n - 1; ++i) {
+        double d0 = d[i], d1 = d[i + 1];
+        double r0 = r[i], r1 = r[i + 1];
+        int in_range = ascending ? (x >= d0 && x <= d1) : (x <= d0 && x >= d1);
+        if (in_range) {
+            if (d1 == d0) return (r0 + r1) / 2.0;
+            double t = (x - d0) / (d1 - d0);
+            return r0 + t * (r1 - r0);
+        }
+    }
+    //fprintf(stderr, "linear_interpolate(): x=%.3f outside domain range\n", x);
+    return NAN;
+}
+
+/*–––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––*/
+
 #ifdef _MSC_VER
 #pragma function (ceil)
 #pragma function (floor)
@@ -164,6 +224,8 @@ static const te_variable functions[] = {
     {"abs", fabs,     TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"acos", acos,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"asin", asin,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
+    {"arrmax",    te_arrmax, TE_FUNCTION1 | TE_FLAG_PURE, 0},
+    {"arrmin",    te_arrmin, TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"atan", atan,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"atan2", atan2,  TE_FUNCTION2 | TE_FLAG_PURE, 0},
     {"ceil", ceil,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
@@ -173,6 +235,7 @@ static const te_variable functions[] = {
     {"exp", exp,      TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"fac", fac,      TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"floor", floor,  TE_FUNCTION1 | TE_FLAG_PURE, 0},
+    {"linear_interpolate",   te_lerp, TE_FUNCTION3 | TE_FLAG_PURE, 0},
     {"ln", log,       TE_FUNCTION1 | TE_FLAG_PURE, 0},
 #ifdef TE_NAT_LOG
     {"log", log,      TE_FUNCTION1 | TE_FLAG_PURE, 0},
@@ -187,6 +250,7 @@ static const te_variable functions[] = {
     {"sin", sin,      TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"sinh", sinh,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"sqrt", sqrt,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
+    {"sum",    te_sum, TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"tan", tan,      TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"tanh", tanh,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {0, 0, 0, 0}
@@ -293,6 +357,8 @@ void next_token(state *s) {
                     case '%': s->type = TOK_INFIX; s->function = fmod; break;
                     case '(': s->type = TOK_OPEN; break;
                     case ')': s->type = TOK_CLOSE; break;
+                    case '[': s->type = TOK_OPEN_BRACKET; break;
+                    case ']': s->type = TOK_CLOSE_BRACKET; break;
                     case ',': s->type = TOK_SEP; break;
                     case ' ': case '\t': case '\n': case '\r': break;
                     default: s->type = TOK_ERROR; break;
@@ -306,6 +372,37 @@ void next_token(state *s) {
 static te_expr *list(state *s);
 static te_expr *expr(state *s);
 static te_expr *power(state *s);
+
+/*
+ * Handle array-lookup postfix: VAR [ expr ].
+ * Only variables may be indexed.
+ */
+static te_expr *parse_postfix(state *s, te_expr *left) {
+    while (s->type == TOK_OPEN_BRACKET) {
+        if (TYPE_MASK(left->type) != TE_VARIABLE) {
+            /* left-hand must be a variable */
+            te_free(left);
+            s->type = TOK_ERROR;
+            return NULL;
+        }
+        next_token(s); /* skip '[' */
+        te_expr *idx = list(s);
+        if (!idx || s->type != TOK_CLOSE_BRACKET) {
+            te_free(idx);
+            te_free(left);
+            s->type = TOK_ERROR;
+            return NULL;
+        }
+        next_token(s); /* skip ']' */
+        const te_expr *params[1] = { idx };
+        te_expr *node = new_expr(TE_ARRAY, params);
+        CHECK_NULL(node, te_free(idx));
+        node->bound = left->bound;
+        te_free(left);
+        left = node;
+    }
+    return left;
+}
 
 static te_expr *base(state *s) {
     /* <base>      =    <constant> | <variable> | <function-0> {"(" ")"} | <function-1> <power> | <function-X> "(" <expr> {"," <expr>} ")" | "(" <list> ")" */
@@ -327,6 +424,7 @@ static te_expr *base(state *s) {
 
             ret->bound = s->bound;
             next_token(s);
+						ret = parse_postfix(s, ret);
             break;
 
         case TE_FUNCTION0:
@@ -599,8 +697,50 @@ double te_eval(const te_expr *n) {
     switch(TYPE_MASK(n->type)) {
         case TE_CONSTANT: return n->value;
         case TE_VARIABLE: return *n->bound;
+        case TE_ARRAY: {
+            /* arr[0]=length; arr[1..length]=values */
+            const double *arrv = n->bound;
+            int len = (int)arrv[0];
+            int idx = (int)te_eval(n->parameters[0]);
+            if (idx < 0 || idx >= len) return NAN;
+            return arrv[idx + 1];
+        }
 
-        case TE_FUNCTION0: case TE_FUNCTION1: case TE_FUNCTION2: case TE_FUNCTION3:
+				if(0){
+				case TE_FUNCTION3:
+            if (n->function == (const void*)te_lerp){
+                te_expr *d = n->parameters[0];
+                te_expr *r = n->parameters[1];
+                double   x = te_eval(n->parameters[2]);
+                if (d->type == TE_VARIABLE && r->type == TE_VARIABLE) {
+                    const double *domain = d->bound;
+                    const double *range  = r->bound;
+                    return te_lerp(domain, range, x);
+                }
+                return NAN;
+						}
+				}
+				if(0){
+				case TE_FUNCTION1:
+            if (n->function == (const void*)te_sum ||
+                n->function == (const void*)te_arrmin ||
+                n->function == (const void*)te_arrmax)
+            {
+                /* the direct argument must be a raw array variable
+                   e.g. sum(myArr) ; so parameter node is TE_VARIABLE */
+                te_expr *arg = n->parameters[0];
+                if (arg->type == TE_VARIABLE) {
+                    const double *arrp = arg->bound;
+                    if (n->function == (const void*)te_sum) return te_sum(arrp);
+                    if (n->function == (const void*)te_arrmin) return te_arrmin(arrp);
+                    return te_arrmax(arrp);
+                }
+                return NAN;
+            }
+            /* otherwise fall through into the normal TE_FUNCTION1 case */
+				}
+
+        case TE_FUNCTION0: case TE_FUNCTION2:
         case TE_FUNCTION4: case TE_FUNCTION5: case TE_FUNCTION6: case TE_FUNCTION7:
             switch(ARITY(n->type)) {
                 case 0: return TE_FUN(void)();
@@ -710,6 +850,14 @@ static void pn (const te_expr *n, int depth) {
     switch(TYPE_MASK(n->type)) {
     case TE_CONSTANT: printf("%f\n", n->value); break;
     case TE_VARIABLE: printf("bound %p\n", n->bound); break;
+    case TE_ARRAY: {
+            /* arr[0]=length; arr[1..length]=values */
+            const double *arrv = n->bound;
+            int len = (int)arrv[0];
+            int idx = (int)te_eval(n->parameters[0]);
+            if (idx < 0 || idx >= len) return NAN;
+            return arrv[idx + 1];
+        }
 
     case TE_FUNCTION0: case TE_FUNCTION1: case TE_FUNCTION2: case TE_FUNCTION3:
     case TE_FUNCTION4: case TE_FUNCTION5: case TE_FUNCTION6: case TE_FUNCTION7:
