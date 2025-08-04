@@ -189,6 +189,10 @@ static double te_arrmax(const double *arr) {
     return m;
 }
 
+static double te_arrlen(const double *arr) {
+    return arr[0];
+}
+
 static double te_lerp(const double *domain, const double *range, double x) {
     int n = (int)domain[0];
     if ((int)range[0] != n || n < 2) {
@@ -223,9 +227,10 @@ static const te_variable functions[] = {
     /* must be in alphabetical order */
     {"abs", fabs,     TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"acos", acos,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
-    {"asin", asin,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
+    {"arrlen",    te_arrlen, TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"arrmax",    te_arrmax, TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"arrmin",    te_arrmin, TE_FUNCTION1 | TE_FLAG_PURE, 0},
+    {"asin", asin,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"atan", atan,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"atan2", atan2,  TE_FUNCTION2 | TE_FLAG_PURE, 0},
     {"ceil", ceil,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
@@ -723,6 +728,7 @@ double te_eval(const te_expr *n) {
 				if(0){
 				case TE_FUNCTION1:
             if (n->function == (const void*)te_sum ||
+                n->function == (const void*)te_arrlen ||
                 n->function == (const void*)te_arrmin ||
                 n->function == (const void*)te_arrmax)
             {
@@ -733,6 +739,7 @@ double te_eval(const te_expr *n) {
                     const double *arrp = arg->bound;
                     if (n->function == (const void*)te_sum) return te_sum(arrp);
                     if (n->function == (const void*)te_arrmin) return te_arrmin(arrp);
+                    if (n->function == (const void*)te_arrlen) return te_arrlen(arrp);
                     return te_arrmax(arrp);
                 }
                 return NAN;

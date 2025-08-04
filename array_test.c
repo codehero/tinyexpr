@@ -56,6 +56,10 @@ static int test_arrays(void) {
         { "linear_interpolate(arr4, arr5, 15)", 45, 0 },  /* casts to idx=1 */
         { "linear_interpolate(arr4, arr5, 25)", 190, 0 },  /* casts to idx=1 */
         { "linear_interpolate(arr4, arr5, 35)", 650, 0 },  /* casts to idx=1 */
+        { "arrlen(arr4)",4, 0 },  /* casts to idx=1 */
+        { "arrlen(arr2)",2, 0 },  /* casts to idx=1 */
+        { "arrmax(arr4)",40, 0 },  /* casts to idx=1 */
+        { "arrmin(arr4)",10, 0 },  /* casts to idx=1 */
     };
 
     const int ntests = sizeof(tests) / sizeof(*tests);
