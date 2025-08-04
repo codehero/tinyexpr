@@ -51,6 +51,9 @@ For log = natural log uncomment the next line. */
 #define INFINITY (1.0/0.0)
 #endif
 
+#define MAX_BITWISE_WIDTH 53
+#define MAX_BITWISE_VALUE ((1ULL << MAX_BITWISE_WIDTH) - 1)
+
 
 typedef double (*te_fun2)(double, double);
 
@@ -160,6 +163,26 @@ static double ncr(double n, double r) {
 }
 static double npr(double n, double r) {return ncr(n, r) * fac(r);}
 
+
+static int is_valid_bitwise_operand(double x) {
+    if (x < 0) return 0;
+    double rounded = round(x);
+    return (rounded <= (double)MAX_BITWISE_VALUE);
+}
+
+static double fn_bit(double n, double i) {
+    if (n < 0 || i < 0) return NAN;
+    int64_t iv = (int64_t)round(n);
+    int64_t bi = (int64_t)round(i);
+    if (iv > (1LL << 53) - 1 || bi >= 53) return NAN;
+    return (iv & (1LL << bi)) ? 1.0 : 0.0;
+}
+
+static double fn_xor(double a, double b) {
+    if (!is_valid_bitwise_operand(a) || !is_valid_bitwise_operand(b)) return NAN;
+    return ((int64_t)round(a)) ^ ((int64_t)round(b));
+}
+
 /*–––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––*/
 /* Generic array-aggregate functions:                                   */
 /*   arr[0] = length; arr[1..length] = data                                */
@@ -233,6 +256,7 @@ static const te_variable functions[] = {
     {"asin", asin,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"atan", atan,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"atan2", atan2,  TE_FUNCTION2 | TE_FLAG_PURE, 0},
+    {"bit", fn_bit,   TE_FUNCTION2 | TE_FLAG_PURE, 0},
     {"ceil", ceil,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"cos", cos,      TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"cosh", cosh,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
@@ -258,6 +282,7 @@ static const te_variable functions[] = {
     {"sum",    te_sum, TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"tan", tan,      TE_FUNCTION1 | TE_FLAG_PURE, 0},
     {"tanh", tanh,    TE_FUNCTION1 | TE_FLAG_PURE, 0},
+    {"xor", fn_xor,   TE_FUNCTION2 | TE_FLAG_PURE, 0},
     {0, 0, 0, 0}
 };
 
@@ -303,7 +328,19 @@ static double mul(double a, double b) {return a * b;}
 static double divide(double a, double b) {return a / b;}
 static double negate(double a) {return -a;}
 static double comma(double a, double b) {(void)a; return b;}
+static double bitwise_and(double a, double b) {
+	if (!is_valid_bitwise_operand(a) || !is_valid_bitwise_operand(b)) return NAN;
+	int64_t ia = (int64_t)round(a);
+	int64_t ib = (int64_t)round(b);
+	return ia & ib;
+}
 
+static double bitwise_or(double a, double b) {
+	if (!is_valid_bitwise_operand(a) || !is_valid_bitwise_operand(b)) return NAN;
+	int64_t ia = (int64_t)round(a);
+	int64_t ib = (int64_t)round(b);
+	return ia | ib;
+}
 
 void next_token(state *s) {
     s->type = TOK_NULL;
@@ -360,6 +397,8 @@ void next_token(state *s) {
                     case '/': s->type = TOK_INFIX; s->function = divide; break;
                     case '^': s->type = TOK_INFIX; s->function = pow; break;
                     case '%': s->type = TOK_INFIX; s->function = fmod; break;
+                    case '&': s->type = TOK_INFIX; s->function = bitwise_and; break;
+                    case '|': s->type = TOK_INFIX; s->function = bitwise_or; break;
                     case '(': s->type = TOK_OPEN; break;
                     case ')': s->type = TOK_CLOSE; break;
                     case '[': s->type = TOK_OPEN_BRACKET; break;
@@ -632,7 +671,9 @@ static te_expr *term(state *s) {
     te_expr *ret = factor(s);
     CHECK_NULL(ret);
 
-    while (s->type == TOK_INFIX && (s->function == mul || s->function == divide || s->function == fmod)) {
+    while (s->type == TOK_INFIX && (s->function == mul || s->function == divide
+					|| s->function == fmod || s->function == bitwise_or || s->function == bitwise_and))
+		{
         te_fun2 t = s->function;
         next_token(s);
         te_expr *f = factor(s);
