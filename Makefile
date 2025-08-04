@@ -4,7 +4,7 @@ LFLAGS = -lm
 
 .PHONY = all clean
 
-all: smoke smoke_pr repl bench example example2 example3 array_test
+all: smoke smoke_pr repl bench example example2 example3 array_test bitwise_test
 
 
 smoke: smoke.c tinyexpr.c
@@ -34,6 +34,10 @@ example3: example3.o tinyexpr.o
 	$(CC) $(CCFLAGS) -o $@ $^ $(LFLAGS)
 
 array_test: array_test.o tinyexpr.o
+	$(CC) $(CCFLAGS) -o $@ $^ $(LFLAGS)
+	./$@
+
+bitwise_test: bitwise_test.o tinyexpr.o
 	$(CC) $(CCFLAGS) -o $@ $^ $(LFLAGS)
 	./$@
 
