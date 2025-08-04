@@ -4,7 +4,7 @@ LFLAGS = -lm
 
 .PHONY = all clean
 
-all: smoke smoke_pr repl bench example example2 example3
+all: smoke smoke_pr repl bench example example2 example3 array_test
 
 
 smoke: smoke.c tinyexpr.c
@@ -32,6 +32,10 @@ example2: example2.o tinyexpr.o
 
 example3: example3.o tinyexpr.o
 	$(CC) $(CCFLAGS) -o $@ $^ $(LFLAGS)
+
+array_test: array_test.o tinyexpr.o
+	$(CC) $(CCFLAGS) -o $@ $^ $(LFLAGS)
+	./$@
 
 repl-readline.o: repl.c
 	$(CC) -c -DUSE_READLINE $(CCFLAGS) $< -o $@
